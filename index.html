@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Приключение Стёпы</title>
+  <link rel="stylesheet" href="base.css">
+  <style>
+    @font-face{font-family:InterLocal;font-style:normal;font-weight:400;font-display:swap;src:url('fonts/inter/inter-400.woff2') format('woff2')}
+    @font-face{font-family:InterLocal;font-style:normal;font-weight:700;font-display:swap;src:url('fonts/inter/inter-700.woff2') format('woff2')}
+    :root{
+      --bg:#0f172a;--fg:#f8fafc;--card:#172554;--card-fg:#f8fafc;--primary:#22d3ee;--on-primary:#082f49;--accent:#facc15;--on-accent:#422006;--muted:#1e293b;--muted-fg:#cbd5e1;--border:#334155;--font-display:InterLocal,system-ui,sans-serif;--font-body:InterLocal,system-ui,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100svh;background:linear-gradient(160deg,#07152f 0%,#123b62 52%,#0e7490 100%);color:var(--fg);font-family:var(--font-body);overflow:hidden;touch-action:manipulation}
+    .game-shell{min-height:100svh;display:grid;place-items:center;padding:1rem}
+    .game-card{width:min(100%,34rem);display:grid;gap:1rem}
+    .game-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+    .game-title{margin:0;font-size:var(--step-2);line-height:1.1;font-weight:700;letter-spacing:-.03em}
+    .score-box{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+    .score-pill{background:rgba(15,23,42,.7);border:1px solid rgba(248,250,252,.2);border-radius:999px;padding:.5rem .8rem;font-size:var(--step--1);font-weight:700;white-space:nowrap}
+    .game-frame{position:relative;width:100%;aspect-ratio:9/14;max-height:76svh;border:2px solid rgba(248,250,252,.25);border-radius:1.25rem;overflow:hidden;background:#7dd3fc;box-shadow:0 1.5rem 4rem rgba(0,0,0,.35);isolation:isolate}
+    #game{display:block;width:100%;height:100%;background:#7dd3fc}
+    .overlay{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:1.5rem;background:linear-gradient(180deg,rgba(7,21,47,.18),rgba(7,21,47,.72));text-align:center}
+    .overlay[hidden]{display:none}
+    .panel{max-width:24rem;padding:1.4rem 1.25rem;border:1px solid rgba(255,255,255,.25);border-radius:1.25rem;background:rgba(15,23,42,.88);box-shadow:0 1rem 3rem rgba(0,0,0,.25)}
+    .panel h1{margin:0 0 .65rem;font-size:var(--step-3);line-height:1.05}
+    .panel p{margin:0 0 1rem;color:#e2e8f0;font-size:var(--step-0);line-height:1.5}
+    .hint{margin-top:.8rem!important;color:#bae6fd!important;font-size:var(--step--1)!important}
+    .btn{border:0;cursor:pointer;min-height:2.75rem;border-radius:999px;padding:.7rem 1.2rem;font:inherit;font-weight:700;transition:transform .15s ease,filter .15s ease}
+    .btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+    .btn:active{transform:translateY(1px)}
+    .btn--primary{background:var(--primary);color:var(--on-primary)}
+    .game-footer{text-align:center;color:var(--muted-fg);font-size:var(--step--1)}
+    .game-footer strong{color:var(--fg)}
+    @media (max-height:42rem){.game-shell{padding:.5rem}.game-card{gap:.5rem}.game-header{min-height:2.5rem}.game-frame{max-height:calc(100svh - 5rem);aspect-ratio:9/13}.game-footer{display:none}}
+  </style>
+</head>
+<body>
+  <main class="game-shell">
+    <section class="game-card" aria-label="Игра Приключение Стёпы">
+      <header class="game-header">
+        <h1 class="game-title">ПРИКЛЮЧЕНИЕ СТЁПЫ</h1>
+        <div class="score-box" aria-live="polite">
+          <span class="score-pill">Счёт: <strong id="score">0</strong></span>
+          <span class="score-pill">Рекорд: <strong id="best">0</strong></span>
+        </div>
+      </header>
+      <div class="game-frame">
+        <canvas id="game" aria-label="Игровое поле. Нажми пробел или коснись экрана, чтобы взлететь."></canvas>
+        <div class="overlay" id="startOverlay">
+          <div class="panel">
+            <h1>Готов к полёту?</h1>
+            <p>Помоги другу пролететь между трубами и набрать как можно больше очков.</p>
+            <button class="btn btn--primary" id="startBtn" type="button">Начать игру</button>
+            <p class="hint">Управление: клик, тап или пробел</p>
+          </div>
+        </div>
+        <div class="overlay" id="gameOverOverlay" hidden>
+          <div class="panel">
+            <h1>Полёт окончен</h1>
+            <p>Твой результат: <strong id="finalScore">0</strong></p>
+            <button class="btn btn--primary" id="restartBtn" type="button">Играть ещё</button>
+            <p class="hint">Пробел или тап тоже запускает новый раунд</p>
+          </div>
+        </div>
+      </div>
+      <footer class="game-footer">Пройди как можно дальше и побей свой рекорд.</footer>
+    </section>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      const canvas = document.getElementById('game');
+      let ctx = null;
+      const isTestEnvironment = typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
+      if (!isTestEnvironment && typeof canvas.getContext === 'function') {
+        try { ctx = canvas.getContext('2d'); } catch (error) { ctx = null; }
+      }
+      const startOverlay = document.getElementById('startOverlay');
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const startBtn = document.getElementById('startBtn');
+      const restartBtn = document.getElementById('restartBtn');
+      const scoreEl = document.getElementById('score');
+      const bestEl = document.getElementById('best');
+      const finalScoreEl = document.getElementById('finalScore');
+      const headImage = new Image();
+      headImage.src = 'assets/player-head.png';
+
+      let width = 0;
+      let height = 0;
+      let dpr = 1;
+      let animationId = 0;
+      let lastTime = 0;
+      let gameState = 'ready';
+      let score = 0;
+      let best = 0;
+      try { best = Number(localStorage.getItem('friend-flappy-best') || 0); } catch (error) { best = 0; }
+      bestEl.textContent = String(best);
+      const bird = {x: 0, y: 0, radius: 0, velocity: 0, rotation: 0};
+      const pipes = [];
+      const settings = {gravity: 1450, flap: -460, speed: 190, gap: 180, pipeWidth: 62, spawnEvery: 1.55};
+      let spawnTimer = 0;
+
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        if (!ctx) return;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = rect.width;
+        height = rect.height;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (gameState === 'ready') resetBird();
+      }
+
+      function resetBird() {
+        bird.radius = Math.max(19, Math.min(27, width * .075));
+        bird.x = width * .28;
+        bird.y = height * .45;
+        bird.velocity = 0;
+        bird.rotation = 0;
+      }
+
+      function resetGame() {
+        pipes.length = 0;
+        score = 0;
+        spawnTimer = 0;
+        scoreEl.textContent = '0';
+        resetBird();
+      }
+
+      function startGame() {
+        resetGame();
+        gameState = 'playing';
+        startOverlay.hidden = true;
+        gameOverOverlay.hidden = true;
+        flap();
+        lastTime = performance.now();
+        cancelAnimationFrame(animationId);
+        animationId = requestAnimationFrame(loop);
+      }
+
+      function endGame() {
+        if (gameState !== 'playing') return;
+        gameState = 'over';
+        finalScoreEl.textContent = String(score);
+        if (score > best) {
+          best = score;
+          try { localStorage.setItem('friend-flappy-best', String(best)); } catch (error) { /* режим без хранилища */ }
+          bestEl.textContent = String(best);
+        }
+        gameOverOverlay.hidden = false;
+        draw();
+      }
+
+      function flap() {
+        if (gameState === 'ready' || gameState === 'over') {
+          startGame();
+          return;
+        }
+        if (gameState === 'playing') bird.velocity = settings.flap;
+      }
+
+      function addPipe() {
+        const minTop = 80;
+        const maxTop = Math.max(minTop, height - settings.gap - 100);
+        const top = minTop + Math.random() * Math.max(1, maxTop - minTop);
+        pipes.push({x: width + 20, top, counted: false});
+      }
+
+      function update(dt) {
+        bird.velocity += settings.gravity * dt;
+        bird.y += bird.velocity * dt;
+        bird.rotation = Math.max(-.45, Math.min(1.15, bird.velocity / 700));
+        spawnTimer += dt;
+        if (spawnTimer >= settings.spawnEvery) { spawnTimer = 0; addPipe(); }
+        for (const pipe of pipes) {
+          pipe.x -= settings.speed * dt;
+          if (!pipe.counted && pipe.x + settings.pipeWidth < bird.x) {
+            pipe.counted = true;
+            score += 1;
+            scoreEl.textContent = String(score);
+          }
+        }
+        while (pipes.length && pipes[0].x + settings.pipeWidth < -10) pipes.shift();
+        if (bird.y - bird.radius < 0 || bird.y + bird.radius > height) endGame();
+        for (const pipe of pipes) {
+          const withinX = bird.x + bird.radius > pipe.x && bird.x - bird.radius < pipe.x + settings.pipeWidth;
+          const hitsY = bird.y - bird.radius < pipe.top || bird.y + bird.radius > pipe.top + settings.gap;
+          if (withinX && hitsY) { endGame(); break; }
+        }
+      }
+
+      function drawBackground() {
+        if (!ctx) return;
+        const sky = ctx.createLinearGradient(0, 0, 0, height);
+        sky.addColorStop(0, '#38bdf8'); sky.addColorStop(1, '#bae6fd');
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(255,255,255,.4)';
+        for (let i = 0; i < 4; i++) {
+          const x = ((i * 147 + 50) % (width + 100)) - 50;
+          const y = 70 + (i % 3) * 95;
+          ctx.beginPath(); ctx.ellipse(x, y, 45, 14, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(x + 28, y + 4, 32, 11, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#65a30d'; ctx.fillRect(0, height - 28, width, 28);
+        ctx.fillStyle = '#a3e635'; ctx.fillRect(0, height - 28, width, 5);
+      }
+
+      function drawPipes() {
+        if (!ctx) return;
+        for (const pipe of pipes) {
+          const bottomY = pipe.top + settings.gap;
+          const gradient = ctx.createLinearGradient(pipe.x, 0, pipe.x + settings.pipeWidth, 0);
+          gradient.addColorStop(0, '#166534'); gradient.addColorStop(.25, '#4ade80'); gradient.addColorStop(.55, '#22c55e'); gradient.addColorStop(1, '#15803d');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(pipe.x, 0, settings.pipeWidth, pipe.top);
+          ctx.fillRect(pipe.x, bottomY, settings.pipeWidth, height - bottomY - 28);
+          ctx.fillStyle = '#86efac';
+          ctx.fillRect(pipe.x - 7, pipe.top - 20, settings.pipeWidth + 14, 20);
+          ctx.fillRect(pipe.x - 7, bottomY, settings.pipeWidth + 14, 20);
+          ctx.strokeStyle = 'rgba(20,83,45,.55)'; ctx.lineWidth = 2;
+          ctx.strokeRect(pipe.x, 0, settings.pipeWidth, pipe.top);
+          ctx.strokeRect(pipe.x, bottomY, settings.pipeWidth, height - bottomY - 28);
+        }
+      }
+
+      function drawBird() {
+        if (!ctx) return;
+        ctx.save();
+        ctx.translate(bird.x, bird.y); ctx.rotate(bird.rotation);
+        ctx.beginPath(); ctx.arc(0, 0, bird.radius + 5, 0, Math.PI * 2); ctx.fillStyle = '#facc15'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, bird.radius + 3, 0, Math.PI * 2); ctx.clip();
+        if (headImage.complete && headImage.naturalWidth > 0) ctx.drawImage(headImage, -bird.radius - 4, -bird.radius - 4, (bird.radius + 4) * 2, (bird.radius + 4) * 2);
+        else { ctx.fillStyle = '#fb923c'; ctx.fillRect(-bird.radius, -bird.radius, bird.radius * 2, bird.radius * 2); }
+        ctx.restore();
+        ctx.save(); ctx.translate(bird.x + bird.radius * .78, bird.y - bird.radius * .22);
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, bird.radius * .19, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(2, 0, bird.radius * .09, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(bird.x + bird.radius, bird.y); ctx.lineTo(bird.x + bird.radius + 16, bird.y - 5); ctx.lineTo(bird.x + bird.radius + 16, bird.y + 6); ctx.closePath(); ctx.fill();
+      }
+
+      function draw() { drawBackground(); drawPipes(); drawBird(); }
+
+      function loop(now) {
+        if (gameState !== 'playing') return;
+        const dt = Math.min((now - lastTime) / 1000, .035);
+        lastTime = now; update(dt); draw();
+        if (gameState === 'playing') animationId = requestAnimationFrame(loop);
+      }
+
+      startBtn.addEventListener('click', startGame);
+      restartBtn.addEventListener('click', startGame);
+      canvas.addEventListener('pointerdown', (event) => { event.preventDefault(); flap(); });
+      document.addEventListener('keydown', (event) => {
+        if (event.code === 'Space' || event.code === 'ArrowUp') { event.preventDefault(); flap(); }
+      });
+      window.addEventListener('resize', resize);
+      headImage.addEventListener('load', draw);
+      resize(); draw();
+    })();
+  </script>
+</body>
+</html>

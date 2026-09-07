@@ -1,0 +1,234 @@
+/* ============================================================================
+   base.css — инженерный слой страницы. Модель его НЕ пишет и НЕ правит.
+   ----------------------------------------------------------------------------
+   Зачем он есть. Замер 29.07.2026 на двух сгенерированных лендингах показал
+   один и тот же класс отказа: на 390 px заголовок уезжал за правый край и
+   обрезался, галерея вылезала за вьюпорт на 1440 px, подзаголовок оказывался
+   белым по фону #F5F8FC (контраст 1.05:1). При этом композиция и вкус были в
+   порядке. Вывод: у модели есть вкус, но нет инженерии — значит инженерию
+   надо забрать и зашить в константу.
+
+   ПРИНЦИП: перечисленные отказы должны стать НЕВОЗМОЖНЫМИ по построению, а не
+   ловиться проверкой постфактум. Проверка — второй рубеж, не первый.
+
+   Что модель делает поверх: выбирает тему (переменные ниже), пишет тексты,
+   подбирает изображения, добавляет декоративные акценты. Сетку, размеры шрифта,
+   брейкпоинты и пары фон/текст она не трогает.
+   ========================================================================= */
+
+/* --- 1. СБРОС -------------------------------------------------------------
+   box-sizing на всё — иначе padding раздувает элемент за пределы колонки.
+   min-width:0 — САМАЯ частая причина горизонтального переполнения: по
+   умолчанию grid- и flex-элемент отказывается сжиматься уже своего контента
+   (min-width:auto), и длинное слово или широкая картинка распирают всю сетку
+   наружу. Одна эта строка закрывает большинство «уехало за экран». */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; min-width: 0; }
+
+/* Медиа никогда не шире своего контейнера. height:auto — чтобы не плющило. */
+img, svg, video, canvas, iframe { display: block; max-width: 100%; height: auto; }
+
+/* overflow-x: clip, а не hidden: hidden на body ломает position:sticky внутри.
+   Это страховка, а не решение — причины переполнения убраны выше. */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: clip; }
+
+/* --- 2. ТОКЕНЫ ТЕМЫ -------------------------------------------------------
+   Имена 1:1 совпадают с колонками data/colors.csv (192 выверенные палитры),
+   поэтому тема подставляется без переименований. Значения здесь — нейтральный
+   дефолт на случай, если тема не подставилась: страница обязана остаться
+   читаемой даже тогда.
+
+   Каждый «фоновый» токен идёт В ПАРЕ со своим токеном текста (--bg/--fg,
+   --card/--card-fg, --primary/--on-primary). Пары нельзя разрывать — см. §6. */
+:root {
+  --bg: #FFFFFF;            --fg: #1A1A1A;
+  --card: #FFFFFF;          --card-fg: #1A1A1A;
+  --primary: #1F5EFF;       --on-primary: #FFFFFF;
+  --secondary: #E8EDFB;     --on-secondary: #16233A;
+  --accent: #E8532F;        --on-accent: #FFFFFF;
+  --muted: #F2F4F8;         --muted-fg: #5A6577;
+  --border: #E2E6EE;
+  --destructive: #D22D2D;   --on-destructive: #FFFFFF;
+  --ring: #1F5EFF;
+
+  /* Шрифты. Подставляются темой из data/typography.csv (25 пар с кириллицей).
+     Фолбэки — системные, они всегда есть и всегда с кириллицей. */
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Ширина полосы контента и боковые поля. Всё остальное считается от них. */
+  --measure: 68rem;
+  --gutter: clamp(1rem, 0.6rem + 2vw, 2.5rem);
+
+  /* --- Флюидная шкала (подход Utopia): размер зависит от ширины экрана
+     непрерывно, без брейкпоинтов. Брейкпоинты модель ставила руками и
+     ошибалась — здесь ставить нечего.
+     Опорные точки: 360 px (узкий телефон) → 1440 px (десктоп). */
+  --step--1: clamp(0.83rem, 0.80rem + 0.16vw, 0.94rem);
+  --step-0:  clamp(1.00rem, 0.95rem + 0.22vw, 1.13rem);
+  --step-1:  clamp(1.20rem, 1.11rem + 0.39vw, 1.44rem);
+  --step-2:  clamp(1.44rem, 1.30rem + 0.63vw, 1.83rem);
+  --step-3:  clamp(1.73rem, 1.51rem + 0.97vw, 2.33rem);
+  --step-4:  clamp(2.07rem, 1.74rem + 1.45vw, 2.96rem);
+  --step-5:  clamp(2.49rem, 2.00rem + 2.11vw, 3.76rem);
+  /* Крупный титул. Верхняя граница намеренно 4.77rem, а не «сколько хочется»:
+     заголовок обязан помещаться в полосу контента на любом экране. */
+  --step-6:  clamp(2.99rem, 2.29rem + 3.02vw, 4.77rem);
+
+  /* Вертикальный ритм */
+  --space-2xs: 0.25rem; --space-xs: 0.5rem;  --space-s: 0.75rem;
+  --space-m: 1.25rem;   --space-l: 2rem;     --space-xl: 3.25rem;
+  --space-2xl: clamp(3.5rem, 2.5rem + 4vw, 6.5rem);
+
+  --radius: 0.5rem;
+}
+
+/* --- 3. ТИПОГРАФИКА -------------------------------------------------------
+   Ни одного фиксированного font-size в px: только шкала выше. */
+body {
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  line-height: 1.1;
+  /* Длинное неразрывное слово (а в русском они длинные) больше не распирает
+     страницу — оно переносится внутри себя. Это прямое лекарство от
+     «Глина помнит рук|и», обрезанного на 390 px. */
+  overflow-wrap: break-word;
+  /* Строки в заголовке уравниваются по длине — не бывает «висячего» слова. */
+  text-wrap: balance;
+}
+h1 { font-size: var(--step-5); }
+h2 { font-size: var(--step-4); }
+h3 { font-size: var(--step-2); }
+h4 { font-size: var(--step-1); }
+
+/* Абзац не растягивается на всю ширину монитора: читаемая строка ~65 знаков. */
+p, li { text-wrap: pretty; }
+p { max-width: 65ch; }
+
+a { color: inherit; }
+
+/* --- 4. РАСКЛАДКА ---------------------------------------------------------
+   Полоса контента. width:min(...) вместо max-width+padding: так поля не
+   «съедают» ширину и элемент не может оказаться шире экрана. */
+.wrap {
+  width: min(100% - var(--gutter) * 2, var(--measure));
+  margin-inline: auto;
+}
+.wrap--wide { --measure: 82rem; }
+.wrap--narrow { --measure: 44rem; }
+
+/* Секция. Вертикальные поля — единственный способ задавать ритм страницы.
+   --tight — для шапки, футера и узких полос, чтобы их не подпирали инлайновым
+   стилем (инлайн сильнее фундамента и ломает его гарантии). */
+.section { padding-block: var(--space-2xl); }
+.section--tight { padding-block: var(--space-l); }
+
+/* Стопка: вертикальные интервалы задаются здесь, а не marginами у каждого
+   элемента. Модель не может «забыть» отступ и слепить блоки. */
+.stack > * + * { margin-block-start: var(--flow, var(--space-m)); }
+.stack--tight { --flow: var(--space-s); }
+.stack--loose { --flow: var(--space-l); }
+
+/* Сетка, которая не разъезжается. Ключ — min(): колонка НИКОГДА не может быть
+   шире контейнера, поэтому на узком экране она честно схлопывается в одну
+   вместо того чтобы вылезти за правый край. Именно это сломалось в галерее
+   керамики на 1440 px и в карточках Colgate на 390 px.
+   Медиазапросов здесь нет и не нужно. */
+.grid {
+  display: grid;
+  gap: var(--gap, var(--space-l));
+  grid-template-columns: repeat(auto-fit, minmax(min(var(--col, 18rem), 100%), 1fr));
+}
+.grid--2 { --col: 26rem; }
+.grid--wide { --col: 24rem; }
+.grid--tight { --col: 14rem; }
+
+/* Две колонки «текст + картинка», которые сами складываются в одну. */
+.split {
+  display: grid;
+  gap: var(--space-xl);
+  align-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+}
+
+/* Ряд, который переносится. Без wrap ряд — источник переполнения. */
+.row { display: flex; flex-wrap: wrap; gap: var(--space-s); align-items: center; }
+.row--between { justify-content: space-between; }
+.row--center { justify-content: center; }
+
+/* --- 5. ИЗОБРАЖЕНИЯ -------------------------------------------------------
+   Слот с заданной пропорцией: любая картинка садится в него кадрированием и
+   не ломает сетку, какой бы формы ни пришла. Плюс это убирает скачок вёрстки
+   при загрузке. Отдельно лечит случай «фото с чужого стока в произвольной
+   пропорции», который на Colgate дал инородный прямоугольник. */
+.frame { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--muted); }
+.frame > img, .frame > video { width: 100%; height: 100%; object-fit: cover; }
+.frame--wide { aspect-ratio: 16 / 9; }
+.frame--photo { aspect-ratio: 4 / 3; }
+.frame--square { aspect-ratio: 1 / 1; }
+.frame--portrait { aspect-ratio: 3 / 4; }
+
+/* Подпись живёт ВНУТРИ карточки, поэтому не может съехать относительно неё —
+   ровно эта ошибка была в галерее «Работы учеников». */
+figure { display: grid; gap: var(--space-xs); }
+figcaption { font-size: var(--step--1); color: var(--muted-fg); }
+
+/* --- 6. ПОВЕРХНОСТИ — защита от «белым по белому» -------------------------
+   Единственный разрешённый способ покрасить фон. Каждый класс задаёт фон И
+   цвет текста одной парой, разорвать её нельзя. Модель физически не может
+   поставить светлый текст на светлый фон, потому что не выбирает их порознь.
+   Токены берутся из палитры (data/colors.csv), где контраст уже выверен. */
+.surface        { background: var(--bg);        color: var(--fg); }
+.surface-card   { background: var(--card);      color: var(--card-fg); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-l); }
+.surface-muted  { background: var(--muted);     color: var(--fg); }
+.surface-primary{ background: var(--primary);   color: var(--on-primary); }
+.surface-accent { background: var(--accent);    color: var(--on-accent); }
+.surface-invert { background: var(--fg);        color: var(--bg); }
+/* Текст на изображении читается только с подложкой — без неё контраст зависит
+   от того, что случайно оказалось на фото. */
+.surface-over   { background: color-mix(in srgb, var(--fg) 62%, transparent); color: var(--bg); }
+
+/* --- 7. КНОПКИ ------------------------------------------------------------
+   min-height 2.75rem = 44 px — минимальный тач-таргет (data/ux-guidelines.csv). */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-xs);
+  min-height: 2.75rem; padding: 0.7em 1.6em;
+  font: inherit; font-weight: 600; line-height: 1.2;
+  border: 1px solid transparent; border-radius: var(--radius);
+  text-decoration: none; cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+.btn--primary { background: var(--primary); color: var(--on-primary); }
+.btn--accent  { background: var(--accent);  color: var(--on-accent); }
+.btn--ghost   { background: transparent;    color: inherit; border-color: currentColor; }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+
+/* Видимый фокус обязателен: без него клавиатурная навигация слепая. */
+:where(a, button, .btn, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* --- 8. ПРОЧЕЕ -----------------------------------------------------------*/
+.eyebrow { font-size: var(--step--1); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.lead { font-size: var(--step-1); color: var(--muted-fg); max-width: 55ch; }
+.hr { height: 1px; border: 0; background: var(--border); }
+.center { text-align: center; margin-inline: auto; }
+
+/* Уважать системную настройку «меньше движения»: анимации не отключаются
+   выборочно, а глушатся все разом. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
